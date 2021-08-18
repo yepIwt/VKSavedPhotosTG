@@ -1,18 +1,22 @@
 
 from aiogram import Bot, Dispatcher, executor, types
 
+import asyncio
+
 class Core:
 
 	def __init__(self, telegram_token: str, upload_pic_to_vk):
 		self.bot = Bot(telegram_token)
 		self.group_id = None
 		self.upload_pic_to_vk = upload_pic_to_vk
+		self.sent_pictures = []
 
 	async def got_picture_from_channel(self, message: types.Message):
 		if message.chat.id == self.group_id:
 			await self.bot.download_file_by_id(message.photo[-1].file_id, str(message.photo[-1].file_id) + '.jpg')
 			await self.upload_pic_to_vk(message.photo[-1].file_id + '.jpg')
-			await message.answer('Отправлено')
+
+			await self.func_to_check_saved()
 
 		elif not self.group_id:
 			await message.answer("Для регистрации канала напишите /start в канал")
@@ -29,7 +33,12 @@ class Core:
 		else:
 			message_text = "Добавьте меня в телеграм-группу для начала работы"
 		await message.answer(message_text)
-		
+
+	async def send_picture_to_channel(self, url, photo_id):
+		await asyncio.sleep(5) # Flood control
+		print(f'Загружена картиночка с {photo_id=}')
+		self.sent_pictures.append(photo_id)
+		await self.bot.send_photo(self.group_id, url)
 
 	def start(self):
 		dp = Dispatcher(self.bot)

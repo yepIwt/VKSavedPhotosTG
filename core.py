@@ -18,7 +18,8 @@ class Core:
 
 	def __init__(self, vk_api_key: str, tg_api_key: str):
 		self.vk_api = self.get_vk_api(vk_api_key)
-		self.tg_core = TelegramBot.Core(tg_api_key, self.save_photo) 
+		self.tg_core = TelegramBot.Core(tg_api_key, self.save_photo)
+		self.tg_core.func_to_check_saved = self.get_saved_photos_from_vk
 		self.sync_album = None
 
 	def get_vk_api(self, token):
@@ -56,7 +57,7 @@ class Core:
 		url_to_upload = result.response.upload_url
 
 		if not os.access(filename, os.R_OK):
-			return (False, 'No such file')
+			raise 'No such file'
 
 		f = open(filename, 'rb')
 
@@ -79,10 +80,38 @@ class Core:
 
 		owner_id, photo_id = await self.upload_pic_to_sync_album(filename)
 
-		await self.vk_api.photos.copy(owner_id = owner_id, photo_id = photo_id)
+		result = await self.vk_api.photos.copy(owner_id = owner_id, photo_id = photo_id)
 		await self.vk_api.photos.delete(owner_id = owner_id, photo_id = photo_id)
 
+		photo_id_in_saved = result.response
+
+		# раньше я сохранял в свои списки photo_id и не понимал, почему он дублируется
+		# оказывается я я тупанул и сохранял photo_id от альбома sync, а при копировании
+		# ну или добавлении в сохраненки выдается дургой photo_id
+		# долго не мог понять, почему дублируется фотка
+
+		self.tg_core.sent_pictures.append(photo_id_in_saved)
+
 		os.remove(filename)
+
+	async def get_saved_photos_from_vk(self):
+
+		result = await self.vk_api.photos.get(album_id = -15)
+		new_saved_photos = []
+
+		for item in result.response.items:
+			new_saved_photos.append(item.id)
+
+		to_sync = list(set(new_saved_photos) - set(self.tg_core.sent_pictures))
+
+		result = await self.vk_api.photos.get(album_id = -15, photo_ids = to_sync)
+
+		for element in result.response.items:
+			url = element.sizes[-1].url
+			photo_id = element.id
+			
+			if photo_id not in self.tg_core.sent_pictures: # дабл проверка
+				await self.tg_core.send_picture_to_channel(url, photo_id)
 
 if __name__ == '__main__':
 	c = Core(config.VK_API_KEY, config.TELEGRAM_API_KEY)
