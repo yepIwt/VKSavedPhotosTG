@@ -3,8 +3,6 @@ import TelegramBot
 from vkwave.api import API
 from vkwave.client import AIOHTTPClient
 
-from vkwave.bots.utils.uploaders import WallPhotoUploader
-
 import aiohttp, aiofiles
 import asyncio
 
@@ -94,12 +92,24 @@ class Core:
 
 		os.remove(filename)
 
+	async def get_all_saved_photos(self, offset, where_saved):
+
+		result = await self.vk_api.photos.get(album_id=-15, offset = offset,count=1000)
+
+		where_saved.extend(result.response.items)
+
+		if len(result.response.items) != 0 and len(where_saved) != len(result.response.items):
+			await main(offset+1000, where_saved)
+
+		return where_saved
+
 	async def get_saved_photos_from_vk(self):
 
-		result = await self.vk_api.photos.get(album_id = -15)
+		saved_photos = await self.get_all_saved_photos(0, [])
+
 		new_saved_photos = []
 
-		for item in result.response.items:
+		for item in saved_photos:
 			new_saved_photos.append(item.id)
 
 		to_sync = list(set(new_saved_photos) - set(self.tg_core.sent_pictures))
