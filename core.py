@@ -8,7 +8,8 @@ import asyncio
 
 import json
 
-import config
+VK_API_TOKEN = os.getenv("VK_API_TOKEN")
+TELEGRAM_API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 
 ALBUM_DESCRIPTION = "Этот альбом используется для загрузки фоток из Телеграма. Большую часть времени он пустой, это значит, что ниче не синхронится"
 
@@ -16,9 +17,9 @@ class Core:
 
 	def __init__(self, vk_api_key: str, tg_api_key: str):
 		self.vk_api = self.get_vk_api(vk_api_key)
-		self.tg_core = TelegramBot.Core(tg_api_key, self.save_photo)
-		self.tg_core.func_to_check_saved = self.get_saved_photos_from_vk
+		self.tg_core = TelegramBot.Core(tg_api_key, self.save_photo, self.get_saved_photos_from_vk)
 		self.sync_album = None
+		self.locked = None
 
 	def get_vk_api(self, token):
 		api_session = API(tokens= token, clients=AIOHTTPClient())
@@ -50,8 +51,11 @@ class Core:
 				self.sync_album = await self.create_sync_queue_album()
 
 	async def upload_pic_to_sync_album(self, filename):
-		await self.check_sync_album()
-		result = await self.vk_api.photos.get_upload_server(album_id = self.sync_album)
+
+		await self.check_sync_album() # 1
+		await asyncio.sleep(5)
+		result = await self.vk_api.photos.get_upload_server(album_id = self.sync_album) # 2
+		await asyncio.sleep(5)
 		url_to_upload = result.response.upload_url
 
 		if not os.access(filename, os.R_OK):
@@ -65,7 +69,7 @@ class Core:
 
 		hashrate = json.loads(data)
 
-		result = await self.vk_api.photos.save(
+		result = await self.vk_api.photos.save( #3
 			album_id = self.sync_album,
 			server = hashrate['server'],
 			photos_list = hashrate['photos_list'],
@@ -75,11 +79,17 @@ class Core:
 		return result.response[0].owner_id, result.response[0].id
 
 	async def save_photo(self, filename):
+		
+		await asyncio.sleep(5)
 
-		owner_id, photo_id = await self.upload_pic_to_sync_album(filename)
+		owner_id, photo_id = await self.upload_pic_to_sync_album(filename) # 4
 
-		result = await self.vk_api.photos.copy(owner_id = owner_id, photo_id = photo_id)
-		await self.vk_api.photos.delete(owner_id = owner_id, photo_id = photo_id)
+		result = await self.vk_api.photos.copy(owner_id = owner_id, photo_id = photo_id) # 5
+
+		await asyncio.sleep(5)
+
+		await self.vk_api.photos.delete(owner_id = owner_id, photo_id = photo_id) #6
+
 
 		photo_id_in_saved = result.response
 
@@ -99,7 +109,7 @@ class Core:
 		where_saved.extend(result.response.items)
 
 		if len(result.response.items) != 0 and len(where_saved) != len(result.response.items):
-			await main(offset+1000, where_saved)
+			await self.get_all_saved_photos(offset+1000, where_saved)
 
 		return where_saved
 
@@ -124,5 +134,5 @@ class Core:
 				await self.tg_core.send_picture_to_channel(url, photo_id)
 
 if __name__ == '__main__':
-	c = Core(config.VK_API_KEY, config.TELEGRAM_API_KEY)
+	c = Core(VK_API_TOKEN, TELEGRAM_API_TOKEN)
 	c.tg_core.start()
