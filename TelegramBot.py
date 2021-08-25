@@ -4,12 +4,13 @@ import asyncio
 
 class Core:
 
-	def __init__(self, telegram_token: str, upload_pic_to_vk):
+	def __init__(self, telegram_token: str, upload_pic_to_vk, sync_function):
 		self.bot = Bot(telegram_token)
 		self.group_id = None
 		self.upload_pic_to_vk = upload_pic_to_vk
 		self.sent_pictures = []
 		self.bot_owner = None
+		self.func_to_check_saved = sync_function
 
 	async def got_picture_from_channel(self, message: types.Message):
 
